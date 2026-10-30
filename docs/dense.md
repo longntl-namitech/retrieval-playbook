@@ -18,7 +18,7 @@ SciFact:
 
 | Method | recall@10 | recall@100 | mrr@10 | ndcg@10 | p50 ms | p95 ms | Rescue | Damage |
 |---|---|---|---|---|---|---|---|---|
-| `dense` | 0.876 | 0.970 | 0.730 | 0.762 | 21 | 31 |  |  |
+| `dense` | 0.876 | 0.970 | 0.730 | 0.762 | 21 | 26 |  |  |
 
 TVPL (Vietnamese legal):
 

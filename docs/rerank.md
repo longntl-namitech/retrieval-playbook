@@ -21,8 +21,8 @@ SciFact:
 
 | Method | recall@10 | recall@100 | mrr@10 | ndcg@10 | p50 ms | p95 ms | Rescue | Damage |
 |---|---|---|---|---|---|---|---|---|
-| `hybrid_rrf` | 0.882 | 0.973 | 0.718 | 0.754 | 23 | 31 |  |  |
-| `hybrid_rrf_rerank` | 0.736 | 0.973 | 0.615 | 0.642 | 986 | 1257 | 5.0% | 13.0% |
+| `hybrid_rrf` | 0.882 | 0.973 | 0.718 | 0.755 | 23 | 28 |  |  |
+| `hybrid_rrf_rerank` | 0.752 | 0.973 | 0.636 | 0.660 | 985 | 1096 | 6.0% | 11.0% |
 
 TVPL (Vietnamese legal):
 
@@ -32,7 +32,7 @@ TVPL (Vietnamese legal):
 | `hybrid_rrf_rerank` | 0.906 | 0.974 | 0.792 | 0.810 | 812 | 1013 | 11.0% | 4.9% |
 
 - On TVPL reranking lifts MRR@10 from 0.757 to 0.792 (rescue 11.0%, damage 4.9%), but dense alone is about as good (0.797) at a fraction of the cost.
-- On SciFact it damages more than it rescues (13.0% vs 5.0%): a multilingual model trained on MS MARCO style questions does not judge scientific claims well.
+- On SciFact it damages more than it rescues (11.0% vs 6.0%) and lowers nDCG@10 from 0.755 to 0.660. The reranker scores title plus text, the same text the other legs indexed.
 
 ## Lessons from production
 - Measured on internal data, data not published. The same cross-encoder over a pool of 20 raised accuracy@1 from 30.9% to 63.8% and MRR@10 from 0.46 to 0.74, rescued 37% of queries and damaged 4.2%, at 213 ms p50 on CPU. On a second set, a hosted Cohere reranker scored 8.2 points above it.
