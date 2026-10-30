@@ -133,3 +133,36 @@ async def test_cross_encoder_scores_relevant_higher():
         "mức phạt vượt đèn đỏ", ["Mức phạt khi vượt đèn đỏ với xe máy", "Thủ tục đăng ký kết hôn"]
     )
     assert scores[0] > scores[1]
+
+
+async def test_slow_rerank_with_context_still_returns_rows(deps, monkeypatch):
+    original = deps.store.fetch_chunks
+
+    async def slow_fetch(*args):
+        await asyncio.sleep(0.1)
+        return await original(*args)
+
+    monkeypatch.setattr(deps.store, "fetch_chunks", slow_fetch)
+    deps.reranker = Slow()
+    req = SearchRequest(
+        query="tea ceremony japan",
+        collection="c",
+        specs=[{"name": "s", "k": 2, "rerank": True, "context": {"prev": 1, "next": 1}}],
+    )
+    result = (await run_search(req, deps, Deadline(500))).results["s"]
+    assert result.status == "ok"
+    assert result.rerank == "failed"
+    assert result.rows
+
+
+async def test_rerank_sees_title_and_text():
+    seen = []
+
+    class Recording:
+        async def score(self, query, texts):
+            seen.extend(texts)
+            return [0.0] * len(texts)
+
+    rows_ = [Row(id="a", doc_id="a", text="body", title="Title", score=1.0), *rows("b")]
+    await apply_rerank(Recording(), "q", rows_, Deadline(4000), 300)
+    assert seen == ["Title\nbody", "text b"]

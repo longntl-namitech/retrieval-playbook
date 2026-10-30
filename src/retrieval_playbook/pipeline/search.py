@@ -19,7 +19,7 @@ from retrieval_playbook.models import SearchRequest, SearchResponse, SearchSpec,
 from retrieval_playbook.pipeline.context import expand_context
 from retrieval_playbook.pipeline.deadline import Deadline
 from retrieval_playbook.pipeline.merge import merge_max
-from retrieval_playbook.pipeline.rerank_stage import apply_rerank
+from retrieval_playbook.pipeline.rerank_stage import SAFETY_MS, apply_rerank
 from retrieval_playbook.registry import Leg, MethodConfig, get_method, legs_for
 from retrieval_playbook.rerankers.base import Reranker
 from retrieval_playbook.store import Store, build_filter
@@ -111,7 +111,14 @@ async def _run_spec(
         )
     rows = rows[: spec.k]
     if spec.context:
-        rows = await expand_context(deps.store, req.collection, rows, spec.context)
+        # Optional like rerank: if the budget runs out, return the rows unexpanded.
+        try:
+            rows = await asyncio.wait_for(
+                expand_context(deps.store, req.collection, rows, spec.context),
+                max(0, deadline.remaining_ms() - SAFETY_MS) / 1000,
+            )
+        except TimeoutError:
+            pass
     return SpecResult(
         status="ok", rows=rows, elapsed_ms=_ms(start), rerank=status, rerank_ms=rerank_ms
     )
@@ -138,7 +145,12 @@ async def run_search(req: SearchRequest, deps: Deps, deadline: Deadline) -> Sear
     start = time.perf_counter()
     method = get_method(req.method or deps.settings.default_method)
     needed: set[Leg] = {leg for spec in req.specs for leg in legs_for(method, spec.search_type)}
-    vectors = await _embed(req.subqueries, needed, deps)
+    try:
+        vectors = await asyncio.wait_for(
+            _embed(req.subqueries, needed, deps), deadline.remaining_s()
+        )
+    except TimeoutError:
+        raise DeadlineExpired from None
     embed_ms = _ms(start)
     if deadline.expired():
         raise DeadlineExpired

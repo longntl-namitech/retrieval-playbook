@@ -33,3 +33,12 @@ def test_bm25_vi_encoder_handles_all_stopword_query():
     assert vector.indices == []
     [doc] = encoder.encode_documents(["thủ tục đăng ký kết hôn"])
     assert doc.indices
+
+
+def test_strip_handles_nfd_input():
+    import unicodedata
+
+    nfc = "Người lao động bởi vì"
+    nfd = unicodedata.normalize("NFD", nfc)
+    stopwords = frozenset({"bởi vì", "người"})
+    assert strip_stopwords(nfd, stopwords) == strip_stopwords(nfc, stopwords) == "lao động"

@@ -71,3 +71,16 @@ async def test_context_expansion_applied(deps):
     )
     [row] = (await run_search(req, deps, Deadline(4000))).results["s"].rows
     assert row.text == "history of tea\ntea ceremony in japan\ntea farming today"
+
+
+async def test_slow_embedding_bounded_by_deadline(deps, monkeypatch):
+    import pytest
+
+    from retrieval_playbook.pipeline.search import DeadlineExpired
+
+    async def slow(texts):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(deps.embedder, "embed_queries", slow)
+    with pytest.raises(DeadlineExpired):
+        await asyncio.wait_for(run_search(request(), deps, Deadline(50)), 0.5)

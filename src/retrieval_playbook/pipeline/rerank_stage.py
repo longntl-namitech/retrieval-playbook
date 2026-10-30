@@ -14,6 +14,11 @@ from retrieval_playbook.rerankers.base import Reranker
 SAFETY_MS = 50
 
 
+def _rerank_text(row: Row) -> str:
+    # same text the dense and sparse legs were indexed with
+    return f"{row.title}\n{row.text}" if row.title else row.text
+
+
 async def apply_rerank(
     reranker: Reranker | None,
     query: str,
@@ -31,7 +36,7 @@ async def apply_rerank(
     start = time.perf_counter()
     try:
         scores = await asyncio.wait_for(
-            reranker.score(query, [r.text for r in rows]), (remaining - SAFETY_MS) / 1000
+            reranker.score(query, [_rerank_text(r) for r in rows]), (remaining - SAFETY_MS) / 1000
         )
     except Exception:  # fall back to retrieval order
         return rows, "failed", round((time.perf_counter() - start) * 1000)

@@ -6,6 +6,7 @@ encoding.
 """
 
 import re
+import unicodedata
 from functools import cache
 from importlib.resources import files
 from typing import Any
@@ -27,7 +28,7 @@ def load_vietnamese_stopwords() -> frozenset[str]:
 
 def strip_stopwords(text: str, stopwords: frozenset[str]) -> str:
     """Drop stopword phrases matched on whole syllables, longest phrase first."""
-    syllables = _SYLLABLE.findall(text.lower())
+    syllables = _SYLLABLE.findall(unicodedata.normalize("NFC", text).lower())
     longest = max((w.count(" ") + 1 for w in stopwords), default=0)
     kept: list[str] = []
     i = 0
@@ -64,6 +65,8 @@ class Bm25Encoder:
         return self._model
 
     def _prepare(self, texts: list[str]) -> list[str]:
+        # NFC: decomposed accents (common from macOS input) would split syllables.
+        texts = [unicodedata.normalize("NFC", t) for t in texts]
         if self.stopwords is None:
             return texts
         return [strip_stopwords(t, self.stopwords) for t in texts]
