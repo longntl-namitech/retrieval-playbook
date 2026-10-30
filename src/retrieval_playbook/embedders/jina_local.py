@@ -17,9 +17,13 @@ class JinaLocalEmbedder:
 
     def _load(self) -> Any:
         if self._model is None:
+            import torch
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self.model_name, trust_remote_code=True)
+            # float32: bfloat16 weights run much slower on most CPUs
+            self._model = SentenceTransformer(
+                self.model_name, trust_remote_code=True, model_kwargs={"dtype": torch.float32}
+            )
         return self._model
 
     def _encode(self, texts: list[str], prompt_name: str) -> list[list[float]]:
