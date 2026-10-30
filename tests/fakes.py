@@ -3,6 +3,8 @@
 import hashlib
 import math
 
+from qdrant_client import models
+
 from retrieval_playbook.embedders.base import EmbedderUnavailable
 
 
@@ -36,3 +38,24 @@ class FailingEmbedder(FakeEmbedder):
         raise EmbedderUnavailable("down")
 
     embed_documents = embed_queries
+
+
+class FakeSparseEncoder:
+    def __init__(self, size: int = 1000):
+        self.size = size
+        self.calls = 0
+
+    def _vec(self, text: str) -> models.SparseVector:
+        counts: dict[int, float] = {}
+        for token in text.lower().split():
+            idx = _bucket(token, self.size)
+            counts[idx] = counts.get(idx, 0.0) + 1.0
+        return models.SparseVector(indices=list(counts), values=list(counts.values()))
+
+    def encode_queries(self, texts: list[str]) -> list[models.SparseVector]:
+        self.calls += 1
+        return [self._vec(t) for t in texts]
+
+    def encode_documents(self, texts: list[str]) -> list[models.SparseVector]:
+        self.calls += 1
+        return [self._vec(t) for t in texts]
