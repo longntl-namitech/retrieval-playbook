@@ -23,6 +23,7 @@ from retrieval_playbook.registry import get_method
 def build_deps(settings: Settings) -> Deps:
     from qdrant_client import AsyncQdrantClient
 
+    from retrieval_playbook.rerankers import make_reranker
     from retrieval_playbook.sparse.bm25 import Bm25Encoder, load_vietnamese_stopwords
     from retrieval_playbook.store import Store
 
@@ -35,6 +36,7 @@ def build_deps(settings: Settings) -> Deps:
         embedder=make_embedder(settings),
         bm25=Bm25Encoder(),
         bm25_vi=Bm25Encoder(stopwords=load_vietnamese_stopwords(), disable_stemmer=True),
+        reranker=make_reranker(settings),
     )
 
 
@@ -47,6 +49,8 @@ def create_app(deps: Deps | None = None) -> FastAPI:
             # request does not spend its deadline on loading.
             built.bm25.encode_queries(["warm up"])
             await built.embedder.embed_queries(["warm up"])
+            if built.reranker is not None:
+                await built.reranker.score("warm up", ["warm up"])
             app.state.deps = built
         yield
 

@@ -75,9 +75,13 @@ async def test_search_ok_shape(deps, client_for):
 async def test_startup_warms_models(deps, monkeypatch):
     from retrieval_playbook.service import app as app_module
 
+    from test_rerank import ScoreByText
+
+    deps.reranker = ScoreByText()
     monkeypatch.setattr(app_module, "build_deps", lambda settings: deps)
     app = create_app()
     async with app.router.lifespan_context(app):
+        assert deps.reranker.calls == 1
         assert deps.embedder.calls == 1
         assert deps.bm25.calls == 1
         assert app.state.deps is deps

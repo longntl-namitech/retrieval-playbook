@@ -3,7 +3,8 @@
 1. Embed every subquery once, only for the vector kinds some spec needs.
 2. Run each spec as its own task under the request deadline. A spec that
    raises or runs out of time becomes a failed row; the others still return.
-3. Per spec: search each subquery, merge, optionally expand context.
+3. Per spec: search each subquery, merge, optionally rerank a wider pool,
+   optionally expand context.
 """
 
 import asyncio
@@ -18,7 +19,9 @@ from retrieval_playbook.models import SearchRequest, SearchResponse, SearchSpec,
 from retrieval_playbook.pipeline.context import expand_context
 from retrieval_playbook.pipeline.deadline import Deadline
 from retrieval_playbook.pipeline.merge import merge_max
+from retrieval_playbook.pipeline.rerank_stage import apply_rerank
 from retrieval_playbook.registry import Leg, MethodConfig, get_method, legs_for
+from retrieval_playbook.rerankers.base import Reranker
 from retrieval_playbook.store import Store, build_filter
 
 
@@ -33,7 +36,7 @@ class Deps:
     embedder: Embedder
     bm25: Any
     bm25_vi: Any
-    reranker: object | None = None
+    reranker: Reranker | None = None
 
 
 def _ms(start: float) -> int:
@@ -69,28 +72,49 @@ async def _run_spec(
     method: MethodConfig,
     vectors: list[QueryVectors],
     deps: Deps,
+    deadline: Deadline,
 ) -> SpecResult:
     start = time.perf_counter()
+    settings = deps.settings
+    rerank = spec.rerank if spec.rerank is not None else method.rerank
     legs = legs_for(method, spec.search_type)
     fusion = method.fusion if len(legs) > 1 else "none"
     flt = build_filter(spec.filter)
-    limit = spec.k
-    prefetch_limit = limit * deps.settings.prefetch_multiplier
+    limit = (
+        min(spec.k * settings.rerank_pool_multiplier, settings.rerank_pool_max)
+        if rerank
+        else spec.k
+    )
+    # A score threshold is on the retrieval scale, which reranking replaces.
+    threshold = None if rerank else spec.threshold
+    prefetch_limit = limit * settings.prefetch_multiplier
     per_query = await asyncio.gather(
         *(
             deps.store.search(
                 req.collection,
                 build_query(legs, fusion, method.weights, v, prefetch_limit, flt),
                 limit,
-                spec.threshold,
+                threshold,
             )
             for v in vectors
         )
     )
-    rows = merge_max(list(per_query), spec.k)
+    rows = merge_max(list(per_query), limit)
+    status, rerank_ms = "off", None
+    if rerank:
+        rows, status, rerank_ms = await apply_rerank(
+            deps.reranker,
+            req.rerank_query or req.subqueries[0],
+            rows,
+            deadline,
+            settings.rerank_min_budget_ms,
+        )
+    rows = rows[: spec.k]
     if spec.context:
         rows = await expand_context(deps.store, req.collection, rows, spec.context)
-    return SpecResult(status="ok", rows=rows, elapsed_ms=_ms(start))
+    return SpecResult(
+        status="ok", rows=rows, elapsed_ms=_ms(start), rerank=status, rerank_ms=rerank_ms
+    )
 
 
 async def _guarded(
@@ -104,7 +128,7 @@ async def _guarded(
     start = time.perf_counter()
     try:
         return await asyncio.wait_for(
-            _run_spec(req, spec, method, vectors, deps), deadline.remaining_s()
+            _run_spec(req, spec, method, vectors, deps, deadline), deadline.remaining_s()
         )
     except Exception as exc:  # isolate: one failing spec must not fail the request
         return SpecResult(status="failed", elapsed_ms=_ms(start), error=type(exc).__name__)
