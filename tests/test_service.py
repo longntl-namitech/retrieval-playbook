@@ -73,9 +73,9 @@ async def test_search_ok_shape(deps, client_for):
 
 
 async def test_startup_warms_models(deps, monkeypatch):
-    from retrieval_playbook.service import app as app_module
-
     from test_rerank import ScoreByText
+
+    from retrieval_playbook.service import app as app_module
 
     deps.reranker = ScoreByText()
     monkeypatch.setattr(app_module, "build_deps", lambda settings: deps)
